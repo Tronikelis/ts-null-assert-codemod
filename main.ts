@@ -1,4 +1,10 @@
-import { Project, ts, Node, SyntaxKind } from "ts-morph";
+import {
+  Project,
+  ts,
+  Node,
+  SyntaxKind,
+  DiagnosticMessageChain,
+} from "ts-morph";
 
 type TNode = Node<ts.Node>;
 
@@ -120,7 +126,12 @@ for (let i = 0; i < diagnostics.length; i++) {
 
   const start = dig.getStart();
 
-  console.log(`fixing ${dig.getLineNumber()} ${start}`, dig.getMessageText());
+  const msg =
+    typeof dig.getMessageText() === "string"
+      ? dig.getMessageText()
+      : (dig.getMessageText() as DiagnosticMessageChain).getMessageText();
+
+  console.log(`fixing ${dig.getLineNumber()} ${start}`, msg);
 
   fixDig(
     dig.getSourceFile()!,
