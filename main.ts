@@ -41,9 +41,10 @@ function appendBang(node: TNode): void {
   node.replaceWithText(nText);
 }
 
-// null assert these nodes:
-// find deepest element access node
-// if not found, find deepest identifier with its declaration
+// null assert priority
+// 1. element access expression
+// 2. return statement
+// 3. identifier -> its value declaration
 function fixDig<T extends TNode>(
   root: T,
   baseCond: (node: TNode) => boolean,
@@ -56,6 +57,17 @@ function fixDig<T extends TNode>(
 
   if (elemAccessNode) {
     appendBang(elemAccessNode);
+    return;
+  }
+
+  const retStatement = findDeepestNode(root, (n) => {
+    if (!baseCond(n)) return false;
+    if (n.isKind(SyntaxKind.ReturnStatement)) return true;
+    return false;
+  });
+
+  if (retStatement) {
+    appendBang(retStatement);
     return;
   }
 
@@ -107,6 +119,8 @@ for (let i = 0; i < diagnostics.length; i++) {
   if (![2532, 18048, 2322].includes(dig.getCode())) continue;
 
   const start = dig.getStart();
+
+  console.log(`fixing ${dig.getLineNumber()} ${start}`, dig.getMessageText());
 
   fixDig(
     dig.getSourceFile()!,
