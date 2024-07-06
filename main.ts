@@ -1,4 +1,96 @@
-import { Project, ts, Node, SyntaxKind, PropertyAssignment } from "ts-morph";
+import {
+  Project,
+  ts,
+  Node,
+  SyntaxKind,
+  PropertyAssignment,
+  Diagnostic,
+  SourceFile,
+} from "ts-morph";
+
+type TNode = Node<ts.Node>;
+
+function traverseNode(node: TNode, cb: (node: TNode) => void) {
+  cb(node);
+  node.getChildren().forEach((node) => traverseNode(node, cb));
+}
+
+function findDeepestNode(
+  root: TNode,
+  where: (Node: TNode) => boolean,
+): TNode | undefined {
+  let current: TNode | undefined;
+
+  traverseNode(root, (n) => {
+    if (where(n)) {
+      current = n;
+    }
+  });
+
+  return current;
+}
+
+function isParentNonNull(node: TNode): boolean {
+  return node.getParent()?.isKind(SyntaxKind.NonNullExpression) || false;
+}
+
+function appendBang(node: TNode): void {
+  console.log("replacing", node.getText(), "->", node.getText() + "!");
+  node.replaceWithText(node.getText() + "!");
+}
+
+// null assert these nodes:
+// find deepest element access node
+// if not found, find deepest identifier with its declaration
+function fixDig<T extends TNode>(
+  root: T,
+  baseCond: (node: TNode) => boolean,
+): void {
+  const elemAccessNode = findDeepestNode(root, (n) => {
+    if (!baseCond(n)) return false;
+    if (n.isKind(SyntaxKind.ElementAccessExpression)) return true;
+    return false;
+  });
+
+  if (elemAccessNode) {
+    appendBang(elemAccessNode);
+    return;
+  }
+
+  const identNode = findDeepestNode(root, (n) => {
+    if (!baseCond(n)) return false;
+    if (n.isKind(SyntaxKind.Identifier)) return true;
+    return false;
+  });
+
+  if (identNode) {
+    const valueDec = identNode.getSymbol()?.getValueDeclaration();
+    if (!valueDec) {
+      // should i call appendBang here?
+      console.warn("no valueDec on", identNode.getText());
+      return;
+    }
+
+    // bar: arr[0]
+    if (valueDec.isKind(SyntaxKind.PropertyAssignment)) {
+      const initializer = valueDec.getInitializer();
+      if (!initializer) {
+        console.warn("no initializer on", valueDec.getText());
+        return;
+      }
+
+      fixDig(initializer, (n) => {
+        if (isParentNonNull(n)) return false;
+        return true;
+      });
+
+      return;
+    }
+
+    appendBang(valueDec);
+    return;
+  }
+}
 
 const project = new Project({
   tsConfigFilePath: process.argv[2] || "./tsconfig.json",
@@ -12,113 +104,15 @@ for (let i = 0; i < diagnostics.length; i++) {
   // is possibly undefined code
   if (![2532, 18048, 2322].includes(dig.getCode())) continue;
 
-  const start = dig.getStart()!;
+  const start = dig.getStart();
 
-  console.log("start", start, "-", dig.getMessageText());
+  fixDig(
+    dig.getSourceFile()!,
+    (n) => n.getStart() === start && !isParentNonNull(n),
+  );
+  // we have to save the files and re run diagnostics as "start" would have changed by now
+  project.saveSync();
 
-  const sourceFile = dig.getSourceFile()!;
-
-  let foundNode: Node<ts.Node> | undefined;
-
-  for (const child of sourceFile.getChildren()) {
-    const findCb = (node: Node<ts.Node>): boolean => {
-      if (node.getStart() !== start) return false;
-      return isFixableNodeKind(node);
-    };
-
-    foundNode = findNodeWith(child, findCb);
-    if (foundNode) break;
-  }
-
-  if (!foundNode) {
-    throw new Error("did not find diagnostic node");
-  }
-
-  fixNode(foundNode);
-
-  // save file and reset diagnostics as "start" would have changed by now
-  sourceFile.saveSync();
   diagnostics = project.getPreEmitDiagnostics();
   i = 0;
-}
-
-function isFixableNodeKind(node: Node<ts.Node>): boolean {
-  if (node.getParent()?.isKind(SyntaxKind.NonNullExpression)) return false;
-
-  if (node.isKind(SyntaxKind.PropertyAssignment)) return true;
-
-  if (node.isKind(SyntaxKind.ReturnStatement)) return true;
-
-  if (node.isKind(SyntaxKind.ElementAccessExpression)) return true;
-
-  if (
-    node.isKind(SyntaxKind.Identifier) &&
-    !node.getSymbol()?.getValueDeclaration()?.getType().isArray()
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function fixNode(node: Node<ts.Node>) {
-  if (node.getKind() === SyntaxKind.Identifier) {
-    const valueDec = node.getSymbol()?.getValueDeclaration();
-    if (!valueDec) {
-      throw new Error(`no value declaration ${node.getText()}`);
-    }
-
-    appendBang(valueDec);
-  } else if (node.getKind() === SyntaxKind.ElementAccessExpression) {
-    appendBang(node);
-  } else if (node.getKind() === SyntaxKind.ReturnStatement) {
-    appendBang(node);
-  } else if (node.getKind() === SyntaxKind.PropertyAssignment) {
-    let initializer = (node as PropertyAssignment).getInitializer();
-
-    if (initializer) {
-      const node = findNodeWith(initializer, isFixableNodeKind);
-
-      if (!node) return;
-      fixNode(node);
-      return;
-    }
-  }
-}
-
-function appendBang(node: Node<ts.Node>) {
-  let hasSemi = node.getText().at(-1) === ";";
-
-  let replaceWith = node.getText();
-  if (hasSemi) {
-    replaceWith = replaceWith.slice(0, replaceWith.length - 1) + "!;";
-  } else {
-    replaceWith += "!";
-  }
-
-  console.log(node.getText(), "->", replaceWith);
-
-  node.replaceWithText(replaceWith);
-}
-
-function traverseNode(node: Node<ts.Node>, cb: (node: Node<ts.Node>) => void) {
-  cb(node);
-  node.getChildren().forEach((node) => {
-    traverseNode(node, cb);
-  });
-}
-
-function findNodeWith(
-  node: Node<ts.Node>,
-  cb: (node: Node<ts.Node>) => boolean,
-): Node<ts.Node> | undefined {
-  let found: Node<ts.Node> | undefined;
-
-  traverseNode(node, (node) => {
-    if (cb(node)) {
-      found = node;
-    }
-  });
-
-  return found;
 }
