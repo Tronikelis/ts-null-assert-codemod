@@ -35,8 +35,18 @@ function isParentNonNull(node: TNode): boolean {
 }
 
 function appendBang(node: TNode): void {
-  console.log("replacing", node.getText(), "->", node.getText() + "!");
-  node.replaceWithText(node.getText() + "!");
+  let nText = node.getText();
+  const nHasSemi = nText.trim()[nText.trim().length - 1] === ";";
+
+  if (nHasSemi) {
+    nText = nText.substring(0, nText.length - 1) + "!" + ";";
+  } else {
+    nText += "!";
+  }
+
+  console.log("replacing", node.getText(), "->", nText);
+
+  node.replaceWithText(nText);
 }
 
 // null assert these nodes:
