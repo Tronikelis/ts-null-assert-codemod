@@ -1,0 +1,10 @@
+{
+    "compilerOptions": {
+        "target": "ESNEXT",
+        "moduleResolution": "nodenext",
+        "baseUrl": ".",
+        "noEmit": true,
+        "strict": true,
+        "noUncheckedIndexedAccess": true
+    }
+}
