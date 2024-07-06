@@ -1,12 +1,4 @@
-import {
-  Project,
-  ts,
-  Node,
-  SyntaxKind,
-  PropertyAssignment,
-  Diagnostic,
-  SourceFile,
-} from "ts-morph";
+import { Project, ts, Node, SyntaxKind } from "ts-morph";
 
 type TNode = Node<ts.Node>;
 
