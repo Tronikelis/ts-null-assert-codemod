@@ -1,4 +1,6 @@
 import { Project, ts, Node, SyntaxKind } from "ts-morph";
+import * as path from "node:path";
+import * as fs from "node:fs";
 
 type TNode = Node<ts.Node>;
 
@@ -107,23 +109,53 @@ function fixDig<T extends TNode>(
       return;
     }
 
+    // fn parameter
+    if (valueDec.isKind(SyntaxKind.Parameter)) {
+      appendBang(identNode);
+      return;
+    }
+
     appendBang(valueDec);
     return;
   }
 }
 
+function findRootPath(startPath: string, target: string): string | undefined {
+  startPath = path.resolve(startPath);
+
+  try {
+    const test = path.join(startPath, target);
+    fs.statSync(test);
+    return test;
+  } catch {}
+
+  const parent = startPath.split(path.sep);
+  parent.pop();
+
+  startPath = parent.join(path.sep);
+  if (!startPath) return;
+
+  return findRootPath(startPath, target);
+}
+
 async function main() {
+  const tsConfigFilePath = process.argv[2] || "./tsconfig.json";
+  const libFolderPath = findRootPath(
+    tsConfigFilePath,
+    "./node_modules/typescript/lib",
+  );
+
+  console.log({ tsConfigFilePath, libFolderPath });
+
   const project = new Project({
-    tsConfigFilePath: process.argv[2] || "./tsconfig.json",
+    tsConfigFilePath,
+    libFolderPath,
   });
 
   let diagnostics = project.getPreEmitDiagnostics();
 
   for (let i = 0; i < diagnostics.length; i++) {
     const dig = diagnostics[i]!;
-
-    // // is possibly undefined code
-    // if (![2532, 18048, 2322, 2345].includes(dig.getCode())) continue;
 
     const start = dig.getStart();
 
