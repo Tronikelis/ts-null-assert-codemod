@@ -55,4 +55,7 @@ function ok() {
   const foo: Foo = {
     bar: arr[0]![0]!,
   };
+
+  const { foo1 } = { foo1: arr[0] };
+  foo1!.toString();
 }

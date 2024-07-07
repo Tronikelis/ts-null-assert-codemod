@@ -1,10 +1,4 @@
-import {
-  Project,
-  ts,
-  Node,
-  SyntaxKind,
-  DiagnosticMessageChain,
-} from "ts-morph";
+import { Project, ts, Node, SyntaxKind } from "ts-morph";
 
 type TNode = Node<ts.Node>;
 
@@ -107,39 +101,53 @@ function fixDig<T extends TNode>(
       return;
     }
 
+    // const {foo} = {foo}
+    if (valueDec.isKind(SyntaxKind.BindingElement)) {
+      appendBang(identNode);
+      return;
+    }
+
     appendBang(valueDec);
     return;
   }
 }
 
-const project = new Project({
-  tsConfigFilePath: process.argv[2] || "./tsconfig.json",
-});
+async function main() {
+  const project = new Project({
+    tsConfigFilePath: process.argv[2] || "./tsconfig.json",
+  });
 
-let diagnostics = project.getPreEmitDiagnostics();
+  let diagnostics = project.getPreEmitDiagnostics();
 
-for (let i = 0; i < diagnostics.length; i++) {
-  const dig = diagnostics[i]!;
+  for (let i = 0; i < diagnostics.length; i++) {
+    const dig = diagnostics[i]!;
 
-  // is possibly undefined code
-  if (![2532, 18048, 2322].includes(dig.getCode())) continue;
+    // // is possibly undefined code
+    // if (![2532, 18048, 2322, 2345].includes(dig.getCode())) continue;
 
-  const start = dig.getStart();
+    const start = dig.getStart();
 
-  const msg =
-    typeof dig.getMessageText() === "string"
-      ? dig.getMessageText()
-      : (dig.getMessageText() as DiagnosticMessageChain).getMessageText();
+    const msgText = dig.getMessageText();
+    const msg: string =
+      typeof msgText === "string" ? msgText : msgText.getMessageText();
 
-  console.log(`fixing ${dig.getLineNumber()} ${start}`, msg);
+    if (!msg.includes("undefined")) continue;
 
-  fixDig(
-    dig.getSourceFile()!,
-    (n) => n.getStart() === start && !isParentNonNull(n),
-  );
-  // we have to save the files and re run diagnostics as "start" would have changed by now
-  project.saveSync();
+    console.log(`fixing ${dig.getLineNumber()} ${start}`, msg);
 
-  diagnostics = project.getPreEmitDiagnostics();
-  i = 0;
+    fixDig(
+      dig.getSourceFile()!,
+      (n) => n.getStart() === start && !isParentNonNull(n),
+    );
+    // we have to save the files and re run diagnostics as "start" would have changed by now
+    await project.save();
+
+    diagnostics = project.getPreEmitDiagnostics();
+    i = 0;
+  }
 }
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
