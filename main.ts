@@ -1,4 +1,4 @@
-import { Project, ts, Node, SyntaxKind, DiagnosticCategory } from "ts-morph";
+import { Project, ts, Node, SyntaxKind, Diagnostic } from "ts-morph";
 import * as path from "node:path";
 import * as fs from "node:fs";
 
@@ -160,12 +160,13 @@ async function main() {
     const dig = diagnostics[i]!;
 
     const start = dig.getStart();
+    const filePath = dig.getSourceFile()?.getFilePath();
 
     const msgText = dig.getMessageText();
     const msg: string =
       typeof msgText === "string" ? msgText : msgText.getMessageText();
 
-    const digHash = `${msg}${dig.getLineNumber()}${dig.getSourceFile()?.getFilePath()}`;
+    const digHash = `${msg}${dig.getLineNumber()}${filePath}`;
 
     if (!msg.includes("undefined") || skippedDigs.has(digHash)) continue;
 
@@ -185,14 +186,20 @@ async function main() {
 
     if (!success) {
       skippedDigs.add(digHash);
-      continue;
     }
 
-    // we have to save the files and re run diagnostics as "start" would have changed by now
-    await project.save();
+    // jump to next file as we modified the diagnostics start so we can't
+    // modify the same file again based on current diagnostics
+    while (diagnostics[i]?.getSourceFile()?.getFilePath() === filePath) {
+      i++;
+    }
 
-    diagnostics = project.getPreEmitDiagnostics();
-    i = 0;
+    // we did 1 modification to every single file at this point, reset
+    if (i === diagnostics.length) {
+      await project.save();
+      diagnostics = project.getPreEmitDiagnostics();
+      i = 0;
+    }
   }
 }
 
