@@ -17,8 +17,10 @@ function ok4(): OK4 {
 
   const v = 0;
 
+  const nice = arr[0];
+
   return {
-    nice: factory.each((ok) => Object.values(arr)[v]!),
+    nice: nice!,
   };
 }
 

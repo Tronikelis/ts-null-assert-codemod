@@ -114,6 +114,13 @@ function fixDig<T extends TNode>(
       return true;
     }
 
+    // nice: nice!
+    if (valueDec.isKind(SyntaxKind.ShorthandPropertyAssignment)) {
+      const text = valueDec.getText();
+      valueDec.replaceWithText(text + ": " + text + "!");
+      return true;
+    }
+
     return fixDig(valueDec, cond);
   }
 
@@ -186,16 +193,18 @@ async function main() {
 
     if (!success) {
       skippedDigs.add(digHash);
+      continue;
     }
 
     // jump to next file as we modified the diagnostics start so we can't
     // modify the same file again based on current diagnostics
-    while (diagnostics[i]?.getSourceFile()?.getFilePath() === filePath) {
+    while (diagnostics[i + 1]?.getSourceFile()?.getFilePath() === filePath) {
       i++;
     }
 
     // we did 1 modification to every single file at this point, reset
-    if (i === diagnostics.length) {
+    if (i === diagnostics.length - 2 || !diagnostics[i + 1]) {
+      console.log("SAVING CHANGES!!!");
       await project.save();
       diagnostics = project.getPreEmitDiagnostics();
       i = 0;
