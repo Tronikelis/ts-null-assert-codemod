@@ -171,10 +171,17 @@ async function main() {
 
     console.log(`fixing ${dig.getLineNumber()} ${start}`, msg);
 
-    const success = fixDig(
-      dig.getSourceFile()!,
-      (n) => n.getStart() === start && !isParentNonNull(n),
-    );
+    let success = false;
+
+    try {
+      success = fixDig(
+        dig.getSourceFile()!,
+        (n) => n.getStart() === start && !isParentNonNull(n),
+      );
+    } catch (err) {
+      console.log("CANT FIX", err);
+      console.log(digHash);
+    }
 
     if (!success) {
       skippedDigs.add(digHash);
