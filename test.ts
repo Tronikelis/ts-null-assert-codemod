@@ -38,6 +38,13 @@ function ok3(): number {
 
 function ok2(): string {
   let arr: string[] = [];
+
+  let n: { foo: string } = {
+    foo: "ok",
+  };
+
+  n = { foo: arr[0]! };
+
   return arr[0];
 }
 

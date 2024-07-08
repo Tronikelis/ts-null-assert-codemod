@@ -79,6 +79,8 @@ function fixDig<T extends TNode>(
   });
 
   if (identNode) {
+    const cond = (n: TNode) => !isParentNonNull(n);
+
     const valueDec = identNode.getSymbol()?.getValueDeclaration();
     if (!valueDec) {
       // should i call appendBang here?
@@ -86,7 +88,7 @@ function fixDig<T extends TNode>(
       return false;
     }
 
-    // bar: arr[0] || jsx={foo}
+    // bar: arr || jsx={foo}
     if (
       valueDec.isKind(SyntaxKind.PropertyAssignment) ||
       valueDec.isKind(SyntaxKind.JsxAttribute)
@@ -97,10 +99,7 @@ function fixDig<T extends TNode>(
         return false;
       }
 
-      return fixDig(initializer, (n) => {
-        if (isParentNonNull(n)) return false;
-        return true;
-      });
+      return fixDig(initializer, cond);
     }
 
     // const {foo} = {foo}
@@ -115,8 +114,7 @@ function fixDig<T extends TNode>(
       return true;
     }
 
-    appendBang(valueDec);
-    return true;
+    return fixDig(valueDec, cond);
   }
 
   return false;
@@ -179,7 +177,6 @@ async function main() {
     );
 
     if (!success) {
-      console.log("can't fix, skipping", digHash);
       skippedDigs.add(digHash);
       continue;
     }
