@@ -1,4 +1,4 @@
-import { Project, ts, Node, SyntaxKind } from "ts-morph";
+import { Project, ts, Node, SyntaxKind, DiagnosticCategory } from "ts-morph";
 import * as path from "node:path";
 import * as fs from "node:fs";
 
@@ -50,7 +50,7 @@ function appendBang(node: TNode): void {
 function fixDig<T extends TNode>(
   root: T,
   baseCond: (node: TNode) => boolean,
-): void {
+): boolean {
   const elemAccessNode = findDeepestNode(root, (n) => {
     if (!baseCond(n)) return false;
     if (n.isKind(SyntaxKind.ElementAccessExpression)) return true;
@@ -59,7 +59,7 @@ function fixDig<T extends TNode>(
 
   if (elemAccessNode) {
     appendBang(elemAccessNode);
-    return;
+    return true;
   }
 
   const retStatement = findDeepestNode(root, (n) => {
@@ -69,8 +69,7 @@ function fixDig<T extends TNode>(
   });
 
   if (retStatement) {
-    appendBang(retStatement);
-    return;
+    return false;
   }
 
   const identNode = findDeepestNode(root, (n) => {
@@ -84,40 +83,43 @@ function fixDig<T extends TNode>(
     if (!valueDec) {
       // should i call appendBang here?
       console.warn("no valueDec on", identNode.getText());
-      return;
+      return false;
     }
 
-    // bar: arr[0]
-    if (valueDec.isKind(SyntaxKind.PropertyAssignment)) {
+    // bar: arr[0] || jsx={foo}
+    if (
+      valueDec.isKind(SyntaxKind.PropertyAssignment) ||
+      valueDec.isKind(SyntaxKind.JsxAttribute)
+    ) {
       const initializer = valueDec.getInitializer();
       if (!initializer) {
         console.warn("no initializer on", valueDec.getText());
-        return;
+        return false;
       }
 
-      fixDig(initializer, (n) => {
+      return fixDig(initializer, (n) => {
         if (isParentNonNull(n)) return false;
         return true;
       });
-
-      return;
     }
 
     // const {foo} = {foo}
     if (valueDec.isKind(SyntaxKind.BindingElement)) {
       appendBang(identNode);
-      return;
+      return true;
     }
 
     // fn parameter
     if (valueDec.isKind(SyntaxKind.Parameter)) {
       appendBang(identNode);
-      return;
+      return true;
     }
 
     appendBang(valueDec);
-    return;
+    return true;
   }
+
+  return false;
 }
 
 function findRootPath(startPath: string, target: string): string | undefined {
@@ -154,6 +156,8 @@ async function main() {
 
   let diagnostics = project.getPreEmitDiagnostics();
 
+  const skippedDigs = new Set<string>();
+
   for (let i = 0; i < diagnostics.length; i++) {
     const dig = diagnostics[i]!;
 
@@ -163,14 +167,23 @@ async function main() {
     const msg: string =
       typeof msgText === "string" ? msgText : msgText.getMessageText();
 
-    if (!msg.includes("undefined")) continue;
+    const digHash = `${msg}${dig.getLineNumber()}${dig.getSourceFile()?.getFilePath()}`;
+
+    if (!msg.includes("undefined") || skippedDigs.has(digHash)) continue;
 
     console.log(`fixing ${dig.getLineNumber()} ${start}`, msg);
 
-    fixDig(
+    const success = fixDig(
       dig.getSourceFile()!,
       (n) => n.getStart() === start && !isParentNonNull(n),
     );
+
+    if (!success) {
+      console.log("can't fix, skipping", digHash);
+      skippedDigs.add(digHash);
+      continue;
+    }
+
     // we have to save the files and re run diagnostics as "start" would have changed by now
     await project.save();
 

@@ -24,7 +24,7 @@ function ok4(): OK4 {
 
 function ok1(): number {
   let arr: number[] = [];
-  return arr[0]!;
+  return arr[0];
 }
 
 function ok3(): number {
@@ -38,7 +38,7 @@ function ok3(): number {
 
 function ok2(): string {
   let arr: string[] = [];
-  return arr[0]!;
+  return arr[0];
 }
 
 type Foo = {
